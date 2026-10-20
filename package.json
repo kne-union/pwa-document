@@ -37,5 +37,11 @@
   "bugs": {
     "url": "https://github.com/kne-union/pwa-document/issues"
   },
-  "homepage": "https://github.com/kne-union/pwa-document#readme"
+  "homepage": "https://github.com/kne-union/pwa-document#readme",
+  "devDependencies": {
+    "chai": "^6.3.0",
+    "husky": "^9.1.7",
+    "mocha": "^12.0.3",
+    "prettier": "^3.9.10"
+  }
 }
