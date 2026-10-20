@@ -1,0 +1,41 @@
+{
+  "name": "@kne/pwa-document",
+  "version": "0.1.0",
+  "description": "按已发布应用切换 PWA 的 manifest、图标与标题，浏览器与 Node 共用同一份匹配规则",
+  "main": "index.js",
+  "scripts": {
+    "init": "husky",
+    "build:md": "npx @kne/md-doc",
+    "start:md": "npx @kne/md-doc --watch",
+    "test": "mocha test/**/*.test.js",
+    "prettier": "prettier --config .prettierrc --write '{index,test/**/*}.{js,json}'",
+    "lint-staged": "npx lint-staged"
+  },
+  "lint-staged": {
+    "{index,test/**/*}.{js,json}": [
+      "prettier --config .prettierrc --write"
+    ]
+  },
+  "files": [
+    "index.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kne-union/pwa-document.git"
+  },
+  "keywords": [
+    "pwa",
+    "manifest",
+    "webmanifest",
+    "apple-touch-icon",
+    "safari",
+    "add-to-dock",
+    "app-center"
+  ],
+  "author": "linzp",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kne-union/pwa-document/issues"
+  },
+  "homepage": "https://github.com/kne-union/pwa-document#readme"
+}
