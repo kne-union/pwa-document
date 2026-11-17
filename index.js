@@ -9,13 +9,23 @@
     module.exports = api;
   } else {
     root.AppCenterPwa = api;
-    api.installPwaDocument(root.__APP_CENTER_PWA__);
+    if (root.__APP_CENTER_PWA__) {
+      api.installPwaDocument(root.__APP_CENTER_PWA__);
+    } else {
+      api.installEmbedBridge();
+    }
   }
 })(typeof window !== 'undefined' ? window : this, function () {
+  var EMBED_MSG_SOURCE = 'kne-pwa-document';
+  var EMBED_HOST_SOURCE = 'kne-app-center-home';
+  var EMBED_SCRIPT_ID = 'kne-pwa-document-embed';
+
   var state = {
     host: null,
     apps: null,
-    hooked: false
+    hooked: false,
+    historyListeners: [],
+    embedInstalled: false
   };
 
   var normalizePath = function (value) {
@@ -198,6 +208,123 @@
     return applyPwaEntry(resolveEntry(currentPath(), apps, options), options);
   };
 
+  var isEmbedded = function () {
+    try {
+      return typeof window !== 'undefined' && !!window.parent && window.parent !== window;
+    } catch (error) {
+      return true;
+    }
+  };
+
+  var reportEmbedLocation = function () {
+    if (!isEmbedded()) {
+      return;
+    }
+    try {
+      window.parent.postMessage(
+        {
+          source: EMBED_MSG_SOURCE,
+          type: 'location',
+          href: String(window.location.href),
+          pathname: String(window.location.pathname || ''),
+          search: String(window.location.search || ''),
+          hash: String(window.location.hash || '')
+        },
+        '*'
+      );
+    } catch (error) {}
+  };
+
+  var notifyHistoryListeners = function () {
+    (state.historyListeners || []).forEach(function (listener) {
+      try {
+        listener();
+      } catch (error) {}
+    });
+  };
+
+  var installHistoryHooks = function () {
+    if (state.hooked || typeof window === 'undefined' || !window.history) {
+      return;
+    }
+    state.hooked = true;
+    ['pushState', 'replaceState'].forEach(function (method) {
+      var original = window.history[method];
+      if (!original) {
+        return;
+      }
+      window.history[method] = function () {
+        var result = original.apply(this, arguments);
+        notifyHistoryListeners();
+        return result;
+      };
+    });
+    window.addEventListener('popstate', notifyHistoryListeners);
+  };
+
+  var addHistoryListener = function (listener) {
+    if (typeof listener !== 'function') {
+      return;
+    }
+    installHistoryHooks();
+    if (state.historyListeners.indexOf(listener) === -1) {
+      state.historyListeners.push(listener);
+    }
+  };
+
+  /**
+   * 嵌在应用中心「主页」iframe 时：向父页上报地址变化，并响应父页的后退/前进/刷新。
+   * 跨域下父页无法可靠调用 iframe.history，须由子页自行 history.back/forward。
+   */
+  var installEmbedBridge = function () {
+    if (typeof window === 'undefined' || state.embedInstalled || window.__kneEmbedBridgeInstalled) {
+      return !!state.embedInstalled || !!window.__kneEmbedBridgeInstalled;
+    }
+    if (!isEmbedded()) {
+      return false;
+    }
+    state.embedInstalled = true;
+    window.__kneEmbedBridgeInstalled = true;
+    addHistoryListener(reportEmbedLocation);
+    window.addEventListener('message', function (event) {
+      var data = event && event.data;
+      if (!data || data.source !== EMBED_HOST_SOURCE || data.type !== 'history') {
+        return;
+      }
+      try {
+        if (data.action === 'back') {
+          window.history.back();
+        } else if (data.action === 'forward') {
+          window.history.forward();
+        } else if (data.action === 'reload') {
+          window.location.reload();
+        }
+      } catch (error) {}
+    });
+    reportEmbedLocation();
+    return true;
+  };
+
+  /** 服务端注入到入口 HTML：无完整 PWA 配置时也能在 iframe 内启用地址上报 */
+  var injectEmbedBridgeHtml = function (html) {
+    var text = String(html || '');
+    if (!text || text.indexOf(EMBED_SCRIPT_ID) !== -1) {
+      return text;
+    }
+    var script =
+      '<script id="' +
+      EMBED_SCRIPT_ID +
+      '">(function(w){if(!w||!w.parent||w.parent===w||w.__kneEmbedBridgeInstalled)return;w.__kneEmbedBridgeInstalled=true;var SRC="' +
+      EMBED_MSG_SOURCE +
+      '",HOST="' +
+      EMBED_HOST_SOURCE +
+      '";var report=function(){try{w.parent.postMessage({source:SRC,type:"location",href:String(w.location.href),pathname:String(w.location.pathname||""),search:String(w.location.search||""),hash:String(w.location.hash||"")},"*");}catch(e){}};var wrap=function(m){var o=w.history[m];if(!o)return;w.history[m]=function(){var r=o.apply(this,arguments);report();return r;};};wrap("pushState");wrap("replaceState");w.addEventListener("popstate",report);w.addEventListener("message",function(ev){var d=ev&&ev.data;if(!d||d.source!==HOST||d.type!=="history")return;try{if(d.action==="back")w.history.back();else if(d.action==="forward")w.history.forward();else if(d.action==="reload")w.location.reload();}catch(e){}});report();})(window);</script>';
+    if (/<\/body>/i.test(text)) {
+      return text.replace(/<\/body>/i, script + '</body>');
+    }
+    return text + script;
+  };
+
   var installPwaDocument = function (options) {
     state.host = Object.assign({}, state.host, options || {});
     if (options && Object.prototype.hasOwnProperty.call(options, 'apps')) {
@@ -206,21 +333,8 @@
       state.apps = fetchApps(state.host);
     }
     var entry = applyCurrent();
-    if (!state.hooked && typeof window !== 'undefined' && window.history) {
-      state.hooked = true;
-      ['pushState', 'replaceState'].forEach(function (method) {
-        var original = window.history[method];
-        if (!original) {
-          return;
-        }
-        window.history[method] = function () {
-          var result = original.apply(this, arguments);
-          applyCurrent();
-          return result;
-        };
-      });
-      window.addEventListener('popstate', applyCurrent);
-    }
+    addHistoryListener(applyCurrent);
+    installEmbedBridge();
     return entry;
   };
 
@@ -332,9 +446,13 @@
     resolveEntry: resolveEntry,
     applyPwaEntry: applyPwaEntry,
     applyPwaHtml: applyPwaHtml,
+    injectEmbedBridgeHtml: injectEmbedBridgeHtml,
+    installEmbedBridge: installEmbedBridge,
     installPwaDocument: installPwaDocument,
     syncPwaDocument: syncPwaDocument,
     buildWebManifest: buildWebManifest,
-    iconUrlFor: iconUrlFor
+    iconUrlFor: iconUrlFor,
+    EMBED_MSG_SOURCE: EMBED_MSG_SOURCE,
+    EMBED_HOST_SOURCE: EMBED_HOST_SOURCE
   };
 });
