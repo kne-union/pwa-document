@@ -22,6 +22,16 @@ describe('@kne/pwa-document', () => {
     expect(pwa.normalizePath('')).to.equal('/');
   });
 
+  it('injectEmbedBridgeHtml 注入 iframe 地址上报脚本且幂等', () => {
+    const html = '<html><body><div id="root"></div></body></html>';
+    const once = pwa.injectEmbedBridgeHtml(html);
+    expect(once).to.include('id="kne-pwa-document-embed"');
+    expect(once).to.include('kne-pwa-document');
+    expect(once).to.include('kne-app-center-home');
+    expect(once).to.match(/kne-pwa-document-embed[\s\S]*<\/body>/);
+    expect(pwa.injectEmbedBridgeHtml(once)).to.equal(once);
+  });
+
   it('resolveEntry 优先匹配更长的已发布路径，/ 只作兜底', () => {
     const options = { shellEntries };
     expect(pwa.resolveEntry('/app/talent-saas/tenant/list', apps, options).title).to.equal('租户端');

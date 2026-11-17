@@ -1,6 +1,6 @@
 {
   "name": "@kne/pwa-document",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "按已发布应用切换 PWA 的 manifest、图标与标题，浏览器与 Node 共用同一份匹配规则",
   "main": "index.js",
   "scripts": {
